@@ -84,8 +84,8 @@ def process(inputDir, outputDir, fileName):
 	rm = get_roi_manager(new=True) # reset the ROI mgr
 
 	# do analysis
-	C1Count = 17
-	C2Count = 1
+	C1Count = 17.0
+	C2Count = 1.0
 
 	# create channel 1 Hoechst ROIs
 	perpLine = Line(0, 0, 50, 50)
@@ -127,7 +127,7 @@ def process(inputDir, outputDir, fileName):
 
 # TODO: collect one of the filenames in script params
 
-currTime = datetime.datetime.now().strftime("%Y-%m-%d-%H_%M")
+currTime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
 print "Current time is " + currTime
 resultsName = currTime + "_Results.csv"
 outputDir = outputFile.getAbsolutePath()
@@ -149,6 +149,8 @@ else:
 run()
 
 csvFile.close() # closes the output file so it can be used elsewhere
+
+rm = get_roi_manager(new=True)
 
 print "Finished."
 
