@@ -25,7 +25,7 @@
 from ij import IJ, WindowManager
 from ij.gui import Roi, PolygonRoi, FreehandRoi, Line, ProfilePlot
 from ij.plugin.frame import RoiManager
-from ij.measure import Calibration
+from ij.measure import Calibration, ResultsTable
 import csv, os, sys, random, math
 import datetime
 import time
@@ -83,28 +83,42 @@ def process(inputDir, outputDir, fileName):
 
 	rm = get_roi_manager(new=True) # reset the ROI mgr
 
-	# do analysis
-	C1Count = 17.0
-	C2Count = 1.0
+	
+	# pre-processing
+	IJ.run(imp, "Gaussian Blur...", "sigma=3 scaled stack"); # 3 micron radius
 
-	# create channel 1 Hoechst ROIs
-	perpLine = Line(0, 0, 50, 50)
-	perpLine.setWidth(1)
-	rm.addRoi(perpLine)
+	# analysis
+
+	# channel 1 Hoechst
+	#TODO: select first channel
+	IJ.run(imp, "Find Maxima...", "noise=5 output=[Point Selection]"); # more noise tol = selects fewer stray points
+	rm.addRoi(imp.getRoi());
 	C1RoiName = wellName+"-"+posName+"-C1"
 	rm.rename(0, C1RoiName) # ROI indices start with 0
-
-	# create channel 2 Sytox ROIs
-	perpLine = Line(100, 100, 250, 250)
-	perpLine.setWidth(1)
-	rm.addRoi(perpLine)
+	rm.select(0)
+	IJ.run(imp, "Measure", "") # one line per point
+	rt = ResultsTable.getResultsTable()
+	C1Count = rt.getCounter() # an integer
+	C1Count = float(C1Count)
+	rt.reset()
+	
+	# channel 2 Sytox
+	#TODO: select second channel
+	IJ.run(imp, "Find Maxima...", "noise=60 output=[Point Selection]");
+	rm.addRoi(imp.getRoi());
 	C2RoiName = wellName+"-"+posName+"-C2"
 	rm.rename(1, C2RoiName)
-	
+	rm.select(1)
+	IJ.run(imp, "Measure", "")
+	C2Count = rt.getCounter()
+	C2Count = float(C2Count)
+	rt.reset()
+
 	# save the ROIset
 	print "Saving to", outputDir
 
 	rm.runCommand("Show All")
+	rm.runCommand("Show None")
 	rm.deselect()
 	roisetName = imageName + "_ROIs.zip"
 	rm.runCommand("Save", os.path.join(outputDir, roisetName))
@@ -118,8 +132,6 @@ def process(inputDir, outputDir, fileName):
 	
 	# close image
 	imp.close()
-
-
 
 # ---- SETUP
 
@@ -151,6 +163,8 @@ run()
 csvFile.close() # closes the output file so it can be used elsewhere
 
 rm = get_roi_manager(new=True)
+
+IJ.run("Clear Results")
 
 print "Finished."
 
