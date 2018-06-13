@@ -1,4 +1,5 @@
 #@File(label = "Input directory", style = "directory") inputFile
+#@File(label = "Input file") inputImage
 #@File(label = "Output directory", style = "directory") outputFile
 #@ String  (label = "File extension", value=".czi") ext
 #@double(label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
@@ -17,7 +18,8 @@
 #	A CSV file with 1 row per image, containing the # nuclei in each channel and the % dead 
 #	For each image, An ROIset containing detected nuclei in each channel
 
-# Usage: Place all images in one folder.
+# Usage: Place all images in one folder. 
+# 	NOTE: They should all be part of one experiment (same base name).
 #	Run the script.
 
 # ---- Imports
@@ -47,13 +49,64 @@ def get_roi_manager(new=False):
 		rm.runCommand("Reset")
 	return rm
 
+# Function for setting up output file
+
+def create_csv(basename):
+	
+	currTime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+	print "Current time is " + currTime
+	resultsName = basename + "_"+currTime + "_Results.csv"
+	outputDir = outputFile.getAbsolutePath()
+	csvPath = os.path.join(outputDir, resultsName)
+	csvExists = os.path.exists(csvPath)
+	csvFile = open(csvPath, 'ab') # creates the file. a for append, b for binary (avoiding potential problems with ascii)
+	csvWriter = csv.writer(csvFile) # this object is able to write to the output file
+
+	# add headers to output file
+	if not csvExists: # avoids appending multiple headers
+		headers = ['Filename','Well','Position','Hoechst Count','SYTOX Count','Fraction Dead']
+		csvWriter.writerow(headers)
+	else:
+		print "Appending to existing file."
+	return
+
+# function for pulling data from filename
+# assumes name format: basename-Scene-XXX-PX[X]-RC[C].czi
+# basename = everything before "Scene"
+
+def parse_filename(filename):
+
+	# takes a filename object returns a tuple of strings
+	
+	fileString = str(filename)[:-4]
+	splitName = fileString.split("Scene") # yields 2 components
+	basename = splitName[0] # first component
+
+	posInfo = splitName[1].split("-") # second component
+	# format -XXX-PX[X]-RC[C].ext
+
+	well = posInfo[3]
+	pos = posInfo[2]
+	
+	result = (basename, well, pos) # string tuple
+	return result
+	
 # --- Function for walking through the folder
 # based on IJ1 Process Folder template
 
 def run():
 
 	inputDir = inputFile.getAbsolutePath()
+	# TODO: take the parent directory of the input *file* to avoid collecting both file and dir
+
 	outputDir = outputFile.getAbsolutePath()
+
+	# parse filename
+	fileInfo = parse_filename(inputFile)
+
+	# create results file using basename
+	create_csv(fileInfo[0])
+
 	for root, directories, filenames in os.walk(inputDir):
 		filenames.sort()
 		for filename in filenames:
@@ -68,6 +121,7 @@ def run():
 
 def process(inputDir, outputDir, fileName):
 
+	
 	# open the image
 	print "Processing:",fileName
 	if ext != ".tif":
@@ -79,24 +133,35 @@ def process(inputDir, outputDir, fileName):
 
 	# get image info
 	imageName = imp.getTitle()
-	wellName = imageName[-6:-4]
-	posName = imageName[-8]
+	imageInfo = parse_filename(imageName)
+	
+	# TODO: skip if single-channel
+	
+	wellName = imageInfo[1]
+	posName = imageName[2]
 	print "This image comes from well "+wellName+" position "+posName
 	imageCalib = imp.getCalibration()
 	pixSize = imageCalib.pixelHeight # assuming in microns
+	# print "The pixel size is "+str(pixSize) # 1.29 for 10x Zeiss
 
 	rm = get_roi_manager(new=True) # reset the ROI mgr
 
 	
 	# pre-processing
-	sigma = nucDiam/4  # guess at blurring radius
+	bkgdRadius = int(nucDiam*pixSize*5) # radius should be considerably larger than nuclei. for d=15um, radius = 96
+	IJ.run(imp, "Subtract Background...", "rolling="+str(bkgdRadius)+" stack");
+	
+	sigma = int(nucDiam/4)  # blurring radius should be smaller than nuclei. for d=15um, sigma = 3
 	IJ.run(imp, "Gaussian Blur...", "sigma="+str(sigma)+" scaled stack"); # sigma is the radius, in microns
 
+	# TODO: check for low S/N or other criteria to tell if severely out of focus
+	  
 	# analysis
 
 	# channel 1 Hoechst
 	imp.setC(1)
-	IJ.run(imp, "Find Maxima...", "noise=50 output=[Point Selection]"); # more noise tol = selects fewer stray points
+	# more noise tolerance = fewer stray points. tried: 50, 70 (about same)
+	IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # more noise tol = selects fewer stray points
 	rm.addRoi(imp.getRoi());
 	C1RoiName = wellName+"-"+posName+"-C1"
 	rm.rename(0, C1RoiName) # ROI indices start with 0
@@ -110,7 +175,11 @@ def process(inputDir, outputDir, fileName):
 	
 	# channel 2 Sytox
 	imp.setC(2)
-	IJ.run(imp, "Find Maxima...", "noise=60 output=[Point Selection]");
+	
+	# TODO: add threshold to this step
+	
+	# tried: 60 (too many dim nuclei), 100 (better but still too many)
+	IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # with sytox we want only the brightest cells
 	rm.addRoi(imp.getRoi());
 	C2RoiName = wellName+"-"+posName+"-C2"
 	rm.rename(1, C2RoiName)
@@ -139,34 +208,13 @@ def process(inputDir, outputDir, fileName):
 	# close image
 	imp.close()
 
-# ---- SETUP
-
-# setup output file
-
-# TODO: collect one of the filenames in script params
-
-currTime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
-print "Current time is " + currTime
-resultsName = currTime + "_Results.csv"
-outputDir = outputFile.getAbsolutePath()
-csvPath = os.path.join(outputDir, resultsName)
-csvExists = os.path.exists(csvPath)
-csvFile = open(csvPath, 'ab') # creates the file. a for append, b for binary (avoiding potential problems with ascii)
-csvWriter = csv.writer(csvFile) # this object is able to write to the output file
-
-# add headers to output file
-if not csvExists: # avoids appending multiple headers
-    headers = ['Filename','Well','Position','Hoechst Count','SYTOX Count','Fraction Dead']
-    csvWriter.writerow(headers)
-else:
-    print "Appending to existing file."
 
 
 # --- PROCESS THE FOLDER
 
 run()
 
-csvFile.close() # closes the output file so it can be used elsewhere
+csvFile.close() # close the output file so it can be used elsewhere
 
 rm = get_roi_manager(new=True)
 
