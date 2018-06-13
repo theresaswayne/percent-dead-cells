@@ -70,8 +70,12 @@ def process(inputDir, outputDir, fileName):
 
 	# open the image
 	print "Processing:",fileName
-	imps = BF.openImagePlus(os.path.join(inputDir, fileName)) # bio-formats opens an array
-	imp = imps[0]
+	if ext != ".tif":
+		imps = BF.openImagePlus(os.path.join(inputDir, fileName)) # bio-formats opens an array
+		imp = imps[0]
+	else:
+		imp = IJ.openImage(os.path.join(inputDir, fileName)) # regular IJ opens a single image
+		
 
 	# get image info
 	imageName = imp.getTitle()
@@ -85,13 +89,14 @@ def process(inputDir, outputDir, fileName):
 
 	
 	# pre-processing
-	IJ.run(imp, "Gaussian Blur...", "sigma=3 scaled stack"); # 3 micron radius
+	sigma = nucDiam/4  # guess at blurring radius
+	IJ.run(imp, "Gaussian Blur...", "sigma="+str(sigma)+" scaled stack"); # sigma is the radius, in microns
 
 	# analysis
 
 	# channel 1 Hoechst
-	#TODO: select first channel
-	IJ.run(imp, "Find Maxima...", "noise=5 output=[Point Selection]"); # more noise tol = selects fewer stray points
+	imp.setC(1)
+	IJ.run(imp, "Find Maxima...", "noise=50 output=[Point Selection]"); # more noise tol = selects fewer stray points
 	rm.addRoi(imp.getRoi());
 	C1RoiName = wellName+"-"+posName+"-C1"
 	rm.rename(0, C1RoiName) # ROI indices start with 0
@@ -100,10 +105,11 @@ def process(inputDir, outputDir, fileName):
 	rt = ResultsTable.getResultsTable()
 	C1Count = rt.getCounter() # an integer
 	C1Count = float(C1Count)
+	rm.deselect()
 	rt.reset()
 	
 	# channel 2 Sytox
-	#TODO: select second channel
+	imp.setC(2)
 	IJ.run(imp, "Find Maxima...", "noise=60 output=[Point Selection]");
 	rm.addRoi(imp.getRoi());
 	C2RoiName = wellName+"-"+posName+"-C2"
