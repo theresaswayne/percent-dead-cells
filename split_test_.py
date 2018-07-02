@@ -1,20 +1,31 @@
 #@File(label = "Input file") inputImage
 
 # test function for splitting
+import os
+import sys
+from ij import IJ
 
-def parse_filename(filename):
 
-	# takes a filename object returns a tuple of strings
+def parse_path(pathname):
 
-	print "The filename is " + str(filename)
-	fileString = str(filename)[:-4]
+	'''
+	takes a filename object 
+	returns a tuple of strings
+	'''
 
-	print "The file name without extension is " + fileString 
-	splitName = fileString.split("Scene") # should yield 2 components
+	inputPath = pathname.getAbsolutePath() # this is needed and I'm not sure why
+	print "The full path is " + str(inputPath)
+	
+	fileWithExt = os.path.basename(inputPath)
+	print "The filename is " + str(fileWithExt)
 
-	# TODO: the first component is the entire path. need to use the plain filename
+	fileName = os.path.splitext(fileWithExt)[0]
+	print "The file name without extension is " + str(fileName) 
+	
+	baseName = fileName.split("Scene") # should yield 2 components. 2nd contains scene, pos, well
+	print "The base image name is " + str(baseName[0])
 
-	print "The first split gives " + str(splitName)
+	posInfo = splitName[1].split("-") # hyphens
 	
 	# basename = splitName[0] # first component
 	# posInfo = splitName[1] # second component
@@ -33,7 +44,7 @@ def parse_filename(filename):
 	return result
 
 
-imageInfo = parse_filename(inputImage)
+imageInfo = parse_path(inputImage)
 baseName = imageInfo[0]
 wellName = imageInfo[1]
 posName = imageInfo[2]
