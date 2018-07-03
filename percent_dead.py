@@ -1,5 +1,4 @@
 #@File(label = "Input directory", style = "directory") inputFile
-#@File(label = "Input file") inputImage
 #@File(label = "Output directory", style = "directory") outputFile
 #@ String  (label = "File extension", value=".czi") ext
 #@double(label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
@@ -19,7 +18,7 @@
 #	For each image, An ROIset containing detected nuclei in each channel
 
 # Usage: Place all images in one folder. 
-# 	NOTE: They should all be part of one experiment (same base name).
+# 	NOTE: They must all be part of one experiment (same base name).
 #	Run the script.
 
 # ---- Imports
@@ -28,7 +27,8 @@ from ij import IJ, WindowManager
 from ij.gui import Roi, PolygonRoi, FreehandRoi, Line, ProfilePlot
 from ij.plugin.frame import RoiManager
 from ij.measure import Calibration, ResultsTable
-import csv, os, sys, random, math
+import csv
+import os, sys, random, math
 import datetime
 import time
 from loci.plugins import BF
@@ -52,7 +52,10 @@ def get_roi_manager(new=False):
 # Function for setting up output file
 
 def create_csv(basename):
-	
+	''' 
+		takes a string
+		returns a path to a csv file with the given basename plus a date-time stamp
+	'''
 	currTime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
 	print "Current time is " + currTime
 	resultsName = basename + "_"+currTime + "_Results.csv"
@@ -68,44 +71,20 @@ def create_csv(basename):
 		csvWriter.writerow(headers)
 	else:
 		print "Appending to existing file."
-	return
-
-# function for pulling data from filename
-# assumes name format: basename-Scene-XXX-PX[X]-RC[C].czi
-# basename = everything before "Scene"
-
-def parse_filename(filename):
-
-	# takes a filename object returns a tuple of strings
 	
-	fileString = str(filename)[:-4]
-	splitName = fileString.split("Scene") # yields 2 components
-	basename = splitName[0] # first component
+	csvFile.close()
+	return csvPath
 
-	posInfo = splitName[1].split("-") # second component
-	# format -XXX-PX[X]-RC[C].ext
+# function for pulling basename from directory
 
-	well = posInfo[3]
-	pos = posInfo[2]
-	
-	result = (basename, well, pos) # string tuple
-	return result
-	
-# --- Function for walking through the folder
-# based on IJ1 Process Folder template
+def get_basename(dirName, ext):
 
-def run():
+	'''
+	takes a directory (path) and an extension (string)
+	returns a string: basename of the first file (in the directory) that matches the extension
+	'''
 
-	inputDir = inputFile.getAbsolutePath()
-	# TODO: take the parent directory of the input *file* to avoid collecting both file and dir
-
-	outputDir = outputFile.getAbsolutePath()
-
-	# parse filename
-	fileInfo = parse_filename(inputFile)
-
-	# create results file using basename
-	create_csv(fileInfo[0])
+	inputDir = dirName.getAbsolutePath() # this is needed and I'm not sure why
 
 	for root, directories, filenames in os.walk(inputDir):
 		filenames.sort()
@@ -114,13 +93,85 @@ def run():
 			# Check for file extension
 			if not filename.endswith(ext):
 				continue
-			process(inputDir, outputDir, filename)
+	
+			fileWithExt = os.path.basename(filename)
+			#print "The filename is " + str(fileWithExt)
+
+			fileName = os.path.splitext(fileWithExt)[0]
+			#print "The file name without extension is " + str(fileName) 
+	
+			base = fileName.split("Scene")[0] # should yield 2 components. 2nd contains scene, pos, well
+			base = base[:-1] # strip trailing hyphen
+			#print "The base image name is " + base 
+
+			return base # loop terminates after the first run
+
+# getting well and position info from filename
+# assumes name format: basename-Scene-XXX-PX[X]-RC[C].czi
+# basename = everything before "Scene"
+
+def parse_fileinfo(filename):
+
+	'''
+	takes a filename from a Zeiss multiwell exported file
+	name format: basename-Scene-XXX-PX-WW.czi
+	returns a tuple of strings:
+		basename
+		well number
+		position number within the well
+	'''
+
+	fileWithExt = os.path.basename(filename)
+	fileWithoutExt = os.path.splitext(fileWithExt)[0]
+	#print "The filename is " + str(fileWithExt)
+	#print "The file name without extension is " + str(fileWithoutExt) 
+
+	base,info = fileWithoutExt.split("Scene") # should yield 2 components. 2nd contains scene, pos, well
+	base = base[:-1] # strip trailing hyphen
+	#print "The base image name is " + str(base) 
+
+	posInfo = info.split("-")
+	# format -scene-pos-well.ext ... first item in list is empty
+
+	scene = posInfo[1] # not returned
+	pos = posInfo[2]
+	well = posInfo[3]
+	
+	result = (base, well, pos) # string tuple
+	return result
+	
+# --- Function for walking through the folder
+# based on IJ1 Process Folder template
+
+def run():
+
+	inputDir = inputFile.getAbsolutePath()
+	outputDir = outputFile.getAbsolutePath()
+
+	# get base filename
+	basename = get_basename(inputFile, ext) # don't have to use the abs path because I do it in the function
+
+	# create results file using basename
+	resultsPath = create_csv(basename)
+	resultsFile = open(resultsPath, 'ab') # open the csv
+	resultsWriter = csv.writer(resultsFile) # create a writer object
+
+	for root, directories, filenames in os.walk(inputDir):
+		filenames.sort()
+		for filename in filenames:
+			print "Checking:",filename
+			# Check for file extension
+			if not filename.endswith(ext):
+				continue
+			process(inputDir, outputDir, filename, resultsWriter)
+
+	resultsFile.close() # close the csv
+	
 
 # --- Function for processing each file
 # based on IJ1 Process Folder template
 
-def process(inputDir, outputDir, fileName):
-
+def process(inputDir, outputDir, fileName, resultsWriter):
 	
 	# open the image
 	print "Processing:",fileName
@@ -133,12 +184,12 @@ def process(inputDir, outputDir, fileName):
 
 	# get image info
 	imageName = imp.getTitle()
-	imageInfo = parse_filename(imageName)
+	imageInfo = parse_fileinfo(fileName)
 	
 	# TODO: skip if single-channel
 	
 	wellName = imageInfo[1]
-	posName = imageName[2]
+	posName = imageInfo[2]
 	print "This image comes from well "+wellName+" position "+posName
 	imageCalib = imp.getCalibration()
 	pixSize = imageCalib.pixelHeight # assuming in microns
@@ -200,10 +251,11 @@ def process(inputDir, outputDir, fileName):
 
 	# write data
 	fracDead = C2Count/C1Count
+
 	for j in range(1):
 		print "Collecting row " + str(j)
-		resultsRow = [imageName, wellName, posName, C1Count, C2Count, fracDead]
-		csvWriter.writerow(resultsRow)
+		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
+		resultsWriter.writerow(resultsRow)
 	
 	# close image
 	imp.close()
@@ -213,8 +265,6 @@ def process(inputDir, outputDir, fileName):
 # --- PROCESS THE FOLDER
 
 run()
-
-csvFile.close() # close the output file so it can be used elsewhere
 
 rm = get_roi_manager(new=True)
 

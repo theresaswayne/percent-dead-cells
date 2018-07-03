@@ -14,33 +14,31 @@ def parse_path(pathname):
 	'''
 
 	inputPath = pathname.getAbsolutePath() # this is needed and I'm not sure why
-	print "The full path is " + str(inputPath)
+	#print "The full path is " + str(inputPath)
 	
 	fileWithExt = os.path.basename(inputPath)
-	print "The filename is " + str(fileWithExt)
+	#print "The filename is " + str(fileWithExt)
 
 	fileName = os.path.splitext(fileWithExt)[0]
-	print "The file name without extension is " + str(fileName) 
+	#print "The file name without extension is " + str(fileName) 
 	
-	baseName = fileName.split("Scene") # should yield 2 components. 2nd contains scene, pos, well
-	print "The base image name is " + str(baseName[0])
+	base,info = fileName.split("Scene") # should yield 2 components. 2nd contains scene, pos, well
+	base = base[:-1] # strip trailing hyphen
+	#print "The base image name is " + str(base) 
 
-	posInfo = splitName[1].split("-") # hyphens
+	posInfo = info.split("-") # hyphens
+	# format -scene-Ppos-well.ext
 	
-	# basename = splitName[0] # first component
-	# posInfo = splitName[1] # second component
-	# posName = posInfo.split("-")
-	# format -XXX-PX[X]-RC[C].ext
-
-	#well = posInfo[3]
-	#pos = posInfo[2]
-
+	scene = posInfo[1]
+	pos = posInfo[2]
+	well = posInfo[3]
+	
 	# DUMMY VALUES FOR TESTING
-	basename = "b"
-	well = "w"
-	pos = "p"
+	#base = "b"
+	#well = "w"
+	#pos = "p"
 	
-	result = (basename, well, pos) # string tuple
+	result = (base, well, pos) # string tuple
 	return result
 
 
