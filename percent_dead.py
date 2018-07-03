@@ -186,8 +186,6 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	imageName = imp.getTitle()
 	imageInfo = parse_fileinfo(fileName)
 	
-	# TODO: skip if single-channel
-	
 	wellName = imageInfo[1]
 	posName = imageInfo[2]
 	print "This image comes from well "+wellName+" position "+posName
@@ -251,7 +249,6 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 
 	# write data
 	fracDead = C2Count/C1Count
-
 	for j in range(1):
 		print "Collecting row " + str(j)
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
@@ -262,14 +259,12 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 
 
 
-# --- PROCESS THE FOLDER
+# --- ACTUALLY PROCESS THE FOLDER
 
 run()
 
+# clean up
 rm = get_roi_manager(new=True)
-
 IJ.run("Clear Results")
-
 print "Finished."
-
  
