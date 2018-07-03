@@ -6,7 +6,7 @@
 # Note: Do not change or remove the first few lines! They provide essential parameters.
 
 # percent_dead.py
-# IJ Jython script by Theresa Swayne, 2018
+# ImageJ Jython script by Theresa Swayne, 2018
 # Written for Robert Hawley, Columbia University
 # Given a set of CZI images from a multi-well plate, multiple positions per plate, 
 #   counts nuclei in each of 2 channels: C1 (all cells) and C2 (dead cells)
@@ -21,7 +21,7 @@
 # 	NOTE: They must all be part of one experiment (same base name).
 #	Run the script.
 
-# ---- Imports
+# ---- IMPORTS
 
 from ij import IJ, WindowManager
 from ij.gui import Roi, PolygonRoi, FreehandRoi, Line, ProfilePlot
@@ -33,11 +33,11 @@ import datetime
 import time
 from loci.plugins import BF
 
-# --- Helper functions
+# ---- HELPER FUNCTIONS
 
-# helper function for ROI mgr
 def get_roi_manager(new=False):
-	""" flexible ROI mgr handling, copied from Particles_From_Mask.py template in Fiji
+	"""
+	flexible ROI mgr handling, copied from Particles_From_Mask.py template in Fiji
 	if new = True, a new blank mgr is returned
 	if new = False (default) and the ROI manager is open, returns that mgr.
 	if new = False and the ROI manager is NOT open, creates a new one without throwing an error
@@ -49,15 +49,15 @@ def get_roi_manager(new=False):
 		rm.runCommand("Reset")
 	return rm
 
-# Function for setting up output file
-
 def create_csv(basename):
 	''' 
-		takes a string
-		returns a path to a csv file with the given basename plus a date-time stamp
+	function to set up an output file for results
+	basename: string
+	creates a csv file with the given basename plus a date-time stamp, and writes headers to the file
+	returns the path to the file 
 	'''
 	currTime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
-	print "Current time is " + currTime
+	# print "Current time is " + currTime
 	resultsName = basename + "_"+currTime + "_Results.csv"
 	outputDir = outputFile.getAbsolutePath()
 	csvPath = os.path.join(outputDir, resultsName)
@@ -72,16 +72,15 @@ def create_csv(basename):
 	else:
 		print "Appending to existing file."
 	
-	csvFile.close()
+	csvFile.close() # close file so it can be used later
 	return csvPath
 
-# function for pulling basename from directory
 
 def get_basename(dirName, ext):
-
 	'''
+	function for finding the experiment name from a set of images
 	takes a directory (path) and an extension (string)
-	returns a string: basename of the first file (in the directory) that matches the extension
+	returns a string: basename of the first file in the directory that matches the extension
 	'''
 
 	inputDir = dirName.getAbsolutePath() # this is needed and I'm not sure why
@@ -106,17 +105,14 @@ def get_basename(dirName, ext):
 
 			return base # loop terminates after the first run
 
-# getting well and position info from filename
-# assumes name format: basename-Scene-XXX-PX[X]-RC[C].czi
-# basename = everything before "Scene"
 
 def parse_fileinfo(filename):
-
 	'''
+	function for getting well and position info from filename
 	takes a filename from a Zeiss multiwell exported file
 	name format: basename-Scene-XXX-PX-WW.czi
 	returns a tuple of strings:
-		basename
+		basename (everything before "Scene")
 		well number
 		position number within the well
 	'''
@@ -139,11 +135,14 @@ def parse_fileinfo(filename):
 	
 	result = (base, well, pos) # string tuple
 	return result
+
 	
-# --- Function for walking through the folder
-# based on IJ1 Process Folder template
 
 def run():
+	'''
+	Function for walking through the folder
+	based on IJ1 Process Folder template
+	'''
 
 	inputDir = inputFile.getAbsolutePath()
 	outputDir = outputFile.getAbsolutePath()
@@ -166,12 +165,17 @@ def run():
 			process(inputDir, outputDir, filename, resultsWriter)
 
 	resultsFile.close() # close the csv
-	
 
-# --- Function for processing each file
-# based on IJ1 Process Folder template
 
 def process(inputDir, outputDir, fileName, resultsWriter):
+	'''
+	Function for procesing each file
+	based on IJ1 Process Folder template
+
+	inputDir, outputDir: directories
+	fileName: string form of a filename
+	resultsWriter: a CSV writer for an open file
+	'''
 	
 	# open the image
 	print "Processing:",fileName
@@ -180,7 +184,6 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		imp = imps[0]
 	else:
 		imp = IJ.openImage(os.path.join(inputDir, fileName)) # regular IJ opens a single image
-		
 
 	# get image info
 	imageName = imp.getTitle()
@@ -194,7 +197,6 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	# print "The pixel size is "+str(pixSize) # 1.29 for 10x Zeiss
 
 	rm = get_roi_manager(new=True) # reset the ROI mgr
-
 	
 	# pre-processing
 	bkgdRadius = int(nucDiam*pixSize*5) # radius should be considerably larger than nuclei. for d=15um, radius = 96
@@ -250,7 +252,7 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	# write data
 	fracDead = C2Count/C1Count
 	for j in range(1):
-		print "Collecting row " + str(j)
+		#print "Collecting row " + str(j)
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
 		resultsWriter.writerow(resultsRow)
 	
@@ -259,7 +261,7 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 
 
 
-# --- ACTUALLY PROCESS THE FOLDER
+# ---- ACTUALLY PROCESS THE FOLDER
 
 run()
 
