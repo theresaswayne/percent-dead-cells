@@ -24,7 +24,7 @@
 
 # ---- IMPORTS
 
-from ij import IJ, WindowManager
+from ij import IJ, WindowManager, ImagePlus
 from ij.gui import Roi, PolygonRoi, FreehandRoi, Line, ProfilePlot
 from ij.plugin.frame import RoiManager
 from ij.measure import Calibration, ResultsTable
@@ -33,6 +33,9 @@ import os, sys, random, math
 import datetime
 import time
 from loci.plugins import BF
+from ij.process import ImageProcessor
+from ij.plugin.filter import MaximumFinder
+
 
 # ---- HELPER FUNCTIONS
 
@@ -245,16 +248,16 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	# ---- API findMaxima WITH THRESHOLD AND SINGLE POINTS 
 	# findMaxima(ImageProcessor ip, double tolerance, double threshold, int outputType, boolean excludeOnEdges, boolean isEDM)
 	# source: https://github.com/imagej/ImageJA/blob/8e283502055d25b9f0456f4aad95afa30a649d45/src/main/java/ij/plugin/filter/MaximumFinder.java
-	# note LIST produces list of coors, SINGLE POINTS produces a bunch of points that are shown by the code below.
+	# note LIST produces list of coords, SINGLE POINTS produces a bunch of points that are shown by the code below.
 	# POINT_SELECTION is supposed to give just that but can't figure out how to get it in the manager
 	# https://stackoverflow.com/questions/26526269/image-analysis-finding-proteins-in-an-image
 	# https://github.com/bgruening/galaxytools/blob/18b441b263846cece9c5527cab0de66a54ecba3a/tools/image_processing/imagej2/imagej2_find_maxima/jython_script.py
 	
 	ip = imp.getProcessor()
 	mf = MaximumFinder()
-	# tried: 60 (too many dim nuclei), 100 (better but still too many)
+	# tried: 60 (too many dim nuclei), 100 (better but still too many), 200 (best)
 	# with sytox we want only the brightest cells
-	maxima = mf.findMaxima(ip, 200.0, thresholdGreen, MaximumFinder.SINGLE_POINTS, False, False)
+	maxima = mf.findMaxima(ip, 100.0, thresholdGreen, MaximumFinder.SINGLE_POINTS, False, False)
 	
 	findmaximashow = ImagePlus("Found Maxima", maxima)
 	findmaximashow.show() # an image of all the points
@@ -267,26 +270,39 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	IJ.run(findmaximashow, "Create Selection", "")
 	rm.addRoi(findmaximashow.getRoi())
 	C2RoiName = wellName+"-"+posName+"-C2"
+	rm.rename(1, C2RoiName)
 
+	# TODO: What to do if there are no maxima -- does it show up as 1? 
 
+	
+	
 	# save the ROIset
-	print "Saving to", outputDir
 
-	rm.runCommand("Show All")
-	rm.runCommand("Show None")
-	rm.deselect()
-	roisetName = imageName + "_ROIs.zip"
+	# TODO: Fix bug on saving -- array index out of range on last image in a set -- why??
+
+	#rm.runCommand("Show All")
+	#rm.runCommand("Show None")
+	#rm.deselect()
+
+	# pythonically select all rois to avoid toggling programmatically
+
+	roi_list = rm.getRoisAsArray()
+	for roi in roi_list:
+		rm.select(rm.getRoiIndex(roi))
+
+	roisetName = imageName[:-4] + "_ROIs.zip"
+	print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + roisetName
 	rm.runCommand("Save", os.path.join(outputDir, roisetName))
 
 	# write data
 	fracDead = C2Count/C1Count
-	for j in range(1):
-		#print "Collecting row " + str(j)
-		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
-		resultsWriter.writerow(resultsRow)
+	resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
+	print "Results: " + " ".join(map(str, resultsRow))
+	resultsWriter.writerow(resultsRow)
 	
-	# close image
+	# close images
 	imp.close()
+	findmaximashow.close()
 
 
 
