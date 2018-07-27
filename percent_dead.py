@@ -228,18 +228,46 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	# channel 2 Sytox
 	imp.setC(2)
 	
-	# TODO: add threshold to this step
+
 	
 	# tried: 60 (too many dim nuclei), 100 (better but still too many)
-	IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # with sytox we want only the brightest cells
-	rm.addRoi(imp.getRoi());
+	#IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # with sytox we want only the brightest cells
+	#rm.addRoi(imp.getRoi());
+	#C2RoiName = wellName+"-"+posName+"-C2"
+	#rm.rename(1, C2RoiName)
+	#rm.select(1)
+	#IJ.run(imp, "Measure", "")
+	#C2Count = rt.getCounter()
+	#C2Count = float(C2Count)
+	#rt.reset()
+
+	
+	# ---- API findMaxima WITH THRESHOLD AND SINGLE POINTS 
+	# findMaxima(ImageProcessor ip, double tolerance, double threshold, int outputType, boolean excludeOnEdges, boolean isEDM)
+	# source: https://github.com/imagej/ImageJA/blob/8e283502055d25b9f0456f4aad95afa30a649d45/src/main/java/ij/plugin/filter/MaximumFinder.java
+	# note LIST produces list of coors, SINGLE POINTS produces a bunch of points that are shown by the code below.
+	# POINT_SELECTION is supposed to give just that but can't figure out how to get it in the manager
+	# https://stackoverflow.com/questions/26526269/image-analysis-finding-proteins-in-an-image
+	# https://github.com/bgruening/galaxytools/blob/18b441b263846cece9c5527cab0de66a54ecba3a/tools/image_processing/imagej2/imagej2_find_maxima/jython_script.py
+	
+	ip = imp.getProcessor()
+	mf = MaximumFinder()
+	# tried: 60 (too many dim nuclei), 100 (better but still too many)
+	# with sytox we want only the brightest cells
+	maxima = mf.findMaxima(ip, 200.0, thresholdGreen, MaximumFinder.SINGLE_POINTS, False, False)
+	
+	findmaximashow = ImagePlus("Found Maxima", maxima)
+	findmaximashow.show() # an image of all the points
+	maximaip = findmaximashow.getProcessor()
+	maximahist = maximaip.getHistogram()
+	C2Count = maximahist[255]
+	print "Using the findMaxima method with a threshold of " + str(thresholdGreen) + ", I found "+ str(C2Count) + " maxima."
+	
+	IJ.setRawThreshold(findmaximashow, 255, 255, "red")
+	IJ.run(findmaximashow, "Create Selection", "")
+	rm.addRoi(findmaximashow.getRoi())
 	C2RoiName = wellName+"-"+posName+"-C2"
-	rm.rename(1, C2RoiName)
-	rm.select(1)
-	IJ.run(imp, "Measure", "")
-	C2Count = rt.getCounter()
-	C2Count = float(C2Count)
-	rt.reset()
+
 
 	# save the ROIset
 	print "Saving to", outputDir
