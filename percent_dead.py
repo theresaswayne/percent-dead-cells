@@ -1,7 +1,8 @@
-#@File(label = "Input directory", style = "directory") inputFile
-#@File(label = "Output directory", style = "directory") outputFile
+#@ File (label = "Input directory", style = "directory") inputFile
+#@ File (label = "Output directory", style = "directory") outputFile
 #@ String  (label = "File extension", value=".czi") ext
-#@double(label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
+#@ Double (label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
+#@ Double (label = "Pixel value threshold for SYTOX Green", value = 0) thresholdGreen
 
 # Note: Do not change or remove the first few lines! They provide essential parameters.
 
