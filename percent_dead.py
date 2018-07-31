@@ -223,7 +223,7 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	rm.select(0)
 	IJ.run(imp, "Measure", "") # one line per point
 	rt = ResultsTable.getResultsTable()
-	C1Count = rt.getCounter() # an integer
+	C1Count = rt.getCounter() # an integer   # TODO: what if there are none. Need to prevent divide by 0 error later.
 	C1Count = float(C1Count)
 	rm.deselect()
 	rt.reset()
@@ -266,36 +266,28 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	C2Count = maximahist[255]
 	print "Using the findMaxima method with a threshold of " + str(thresholdGreen) + ", I found "+ str(C2Count) + " maxima."
 	
-	IJ.setRawThreshold(findmaximashow, 255, 255, "red")
-	IJ.run(findmaximashow, "Create Selection", "")
-	rm.addRoi(findmaximashow.getRoi())
-	C2RoiName = wellName+"-"+posName+"-C2"
-	rm.rename(1, C2RoiName)
-
-	# TODO: What to do if there are no maxima -- does it show up as 1? 
+	if C2Count != 0:
+		IJ.setRawThreshold(findmaximashow, 255, 255, "red")
+		IJ.run(findmaximashow, "Create Selection", "")
+		rm.addRoi(findmaximashow.getRoi())
+		C2RoiName = wellName+"-"+posName+"-C2"
+		rm.rename(1, C2RoiName)
 
 	
-	
-	# save the ROIset
+	# save ROIs and data
 
-	# TODO: Fix bug on saving -- array index out of range on last image in a set -- why??
-
-	#rm.runCommand("Show All")
-	#rm.runCommand("Show None")
-	#rm.deselect()
-
-	# pythonically select all rois to avoid toggling programmatically
-
+	# pythonically select all rois
 	roi_list = rm.getRoisAsArray()
 	for roi in roi_list:
 		rm.select(rm.getRoiIndex(roi))
 
 	roisetName = imageName[:-4] + "_ROIs.zip"
-	print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + roisetName
-	rm.runCommand("Save", os.path.join(outputDir, roisetName))
+	print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
 
-	# write data
-	fracDead = C2Count/C1Count
+	# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
+	rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
+
+	fracDead = C2Count/C1Count # TODO: what if C1Count == 0
 	resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
 	print "Results: " + " ".join(map(str, resultsRow))
 	resultsWriter.writerow(resultsRow)
