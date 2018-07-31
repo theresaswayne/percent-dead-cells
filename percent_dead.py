@@ -36,6 +36,7 @@ import time
 from loci.plugins import BF
 from ij.process import ImageProcessor
 from ij.plugin.filter import MaximumFinder
+from array import array
 
 
 # ---- HELPER FUNCTIONS
@@ -220,10 +221,13 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	IJ.run(imp, "Find Maxima...", "noise="+str(noise)+" output=[Point Selection]"); # more noise tol = selects fewer stray points
 
 	roi = imp.getRoi()
+	
 	if roi is None: # there are no Hoechst maxima found
 		C1Count = 0
+		print "No Hoechst cells found"
 
 	else:
+		print "I found some Hoechst cells"
 		rm.addRoi(imp.getRoi()); 
 		C1RoiName = wellName+"-"+posName+"-C1"
 		rm.rename(0, C1RoiName) # ROI indices start with 0
@@ -248,9 +252,10 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		resultsWriter.writerow(resultsRow)
 
 	else:
-		
 		# channel 2 Sytox
 		imp.setC(2)
+
+		# TODO: Limit Sytox detections to DAPI-positive areas -- either by thresholding or by distance from a point
 		
 		# ---- API findMaxima WITH THRESHOLD AND SINGLE POINTS 
 		# findMaxima(ImageProcessor ip, double tolerance, double threshold, int outputType, boolean excludeOnEdges, boolean isEDM)
@@ -282,15 +287,21 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	
 		
 		# save ROIs and data
-	
-		# pythonically select all rois
-		roi_list = rm.getRoisAsArray()
-		for roi in roi_list:
-			rm.select(rm.getRoiIndex(roi))
+
+		numROIs = rm.getCount()
+		indexList = range(numROIs)[:-1]
+		print indexList
+		aROIs = array('i', indexList)
+		rm.setSelectedIndexes(aROIs) # try to fix bug of not saving Hoechst ROIs
+		selRois = rm.getSelectedIndexes()
+		print selRois, " are selected" # TODO: this is funky, the array isn't treated right
 	
 		roisetName = imageName[:-4] + "_ROIs.zip"
-		print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
-	
+		# print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
+
+		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName # TODO: it only saves the 1st ROI now!
+		# http://forum.imagej.net/t/jython-roi-manager-deletion-by-index/5013/6
+		# http://forum.imagej.net/t/select-rois-in-the-roi-manager-according-to-the-measured-data/908
 		# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
 		rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
 	
