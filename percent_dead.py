@@ -1,7 +1,9 @@
-#@File(label = "Input directory", style = "directory") inputFile
-#@File(label = "Output directory", style = "directory") outputFile
+#@ File (label = "Input directory", style = "directory") inputFile
+#@ File (label = "Output directory", style = "directory") outputFile
 #@ String  (label = "File extension", value=".czi") ext
-#@double(label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
+#@ Double (label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
+#@ Double (label = "Noise tolerance value for Hoechst. Higher = more stringent", value = 200) noise
+#@ Double (label = "Pixel value threshold for SYTOX Green", value = 0) thresholdGreen
 
 # Note: Do not change or remove the first few lines! They provide essential parameters.
 
@@ -23,7 +25,7 @@
 
 # ---- IMPORTS
 
-from ij import IJ, WindowManager
+from ij import IJ, WindowManager, ImagePlus
 from ij.gui import Roi, PolygonRoi, FreehandRoi, Line, ProfilePlot
 from ij.plugin.frame import RoiManager
 from ij.measure import Calibration, ResultsTable
@@ -32,6 +34,10 @@ import os, sys, random, math
 import datetime
 import time
 from loci.plugins import BF
+from ij.process import ImageProcessor
+from ij.plugin.filter import MaximumFinder
+from array import array
+
 
 # ---- HELPER FUNCTIONS
 
@@ -209,54 +215,103 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	  
 	# analysis
 
-	# channel 1 Hoechst
+	# channel 1 Hoechst  # TODO: adapt to use same technique as SYTOX and spin off into a function
 	imp.setC(1)
 	# more noise tolerance = fewer stray points. tried: 50, 70 (about same)
-	IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # more noise tol = selects fewer stray points
-	rm.addRoi(imp.getRoi());
-	C1RoiName = wellName+"-"+posName+"-C1"
-	rm.rename(0, C1RoiName) # ROI indices start with 0
-	rm.select(0)
-	IJ.run(imp, "Measure", "") # one line per point
-	rt = ResultsTable.getResultsTable()
-	C1Count = rt.getCounter() # an integer
-	C1Count = float(C1Count)
-	rm.deselect()
-	rt.reset()
-	
-	# channel 2 Sytox
-	imp.setC(2)
-	
-	# TODO: add threshold to this step
-	
-	# tried: 60 (too many dim nuclei), 100 (better but still too many)
-	IJ.run(imp, "Find Maxima...", "noise=200 output=[Point Selection]"); # with sytox we want only the brightest cells
-	rm.addRoi(imp.getRoi());
-	C2RoiName = wellName+"-"+posName+"-C2"
-	rm.rename(1, C2RoiName)
-	rm.select(1)
-	IJ.run(imp, "Measure", "")
-	C2Count = rt.getCounter()
-	C2Count = float(C2Count)
-	rt.reset()
+	IJ.run(imp, "Find Maxima...", "noise="+str(noise)+" output=[Point Selection]"); # more noise tol = selects fewer stray points
 
-	# save the ROIset
-	print "Saving to", outputDir
+	roi = imp.getRoi()
+	
+	if roi is None: # there are no Hoechst maxima found
+		C1Count = 0
+		print "No Hoechst cells found"
 
-	rm.runCommand("Show All")
-	rm.runCommand("Show None")
-	rm.deselect()
-	roisetName = imageName + "_ROIs.zip"
-	rm.runCommand("Save", os.path.join(outputDir, roisetName))
+	else:
+		print "I found some Hoechst cells"
+		rm.addRoi(imp.getRoi()); 
+		C1RoiName = wellName+"-"+posName+"-C1"
+		rm.rename(0, C1RoiName) # ROI indices start with 0
+		rm.select(0)
+		IJ.run(imp, "Measure", "") # one line per point
+		rt = ResultsTable.getResultsTable()
+		C1Count = rt.getCounter() # an integer    
+		C1Count = float(C1Count)
+		rm.deselect()
+		rt.reset()
 
-	# write data
-	fracDead = C2Count/C1Count
-	for j in range(1):
-		#print "Collecting row " + str(j)
+	print str(C1Count) + " Hoechst-labeled cells found."
+
+
+	if C1Count == 0: # no Hoechst, no cells, percent dead is undefined
+		# write 0 in Hoechst column
+		# write "" in sytox column and percent dead column -- note excel should not include these cells in average. R will not (use na.rm?)
+		C2Count = ""
+		fracDead = ""
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
+		print "Results: " + " ".join(map(str, resultsRow))
 		resultsWriter.writerow(resultsRow)
+
+	else:
+		# channel 2 Sytox
+		imp.setC(2)
+
+		# TODO: Limit Sytox detections to DAPI-positive areas -- either by thresholding or by distance from a point
+		
+		# ---- API findMaxima WITH THRESHOLD AND SINGLE POINTS 
+		# findMaxima(ImageProcessor ip, double tolerance, double threshold, int outputType, boolean excludeOnEdges, boolean isEDM)
+		# source: https://github.com/imagej/ImageJA/blob/8e283502055d25b9f0456f4aad95afa30a649d45/src/main/java/ij/plugin/filter/MaximumFinder.java
+		# note LIST produces list of coords, SINGLE POINTS produces a bunch of points that are shown by the code below.
+		# POINT_SELECTION is supposed to give just that but can't figure out how to get it in the manager
+		# https://stackoverflow.com/questions/26526269/image-analysis-finding-proteins-in-an-image
+		# https://github.com/bgruening/galaxytools/blob/18b441b263846cece9c5527cab0de66a54ecba3a/tools/image_processing/imagej2/imagej2_find_maxima/jython_script.py
+		
+		ip = imp.getProcessor()
+		mf = MaximumFinder()
+		# tried: 60 (too many dim nuclei), 100 (better but still too many), 200 (best)
+		# with sytox we want only the brightest cells
+		maxima = mf.findMaxima(ip, 100.0, thresholdGreen, MaximumFinder.SINGLE_POINTS, False, False)
+		
+		findmaximashow = ImagePlus("Found Maxima", maxima)
+		findmaximashow.show() # an image of all the points
+		maximaip = findmaximashow.getProcessor()
+		maximahist = maximaip.getHistogram()
+		C2Count = maximahist[255]
+		print "Using the findMaxima method with a threshold of " + str(thresholdGreen) + ", I found "+ str(C2Count) + " maxima."
+		
+		if C2Count != 0:
+			IJ.setRawThreshold(findmaximashow, 255, 255, "red")
+			IJ.run(findmaximashow, "Create Selection", "")
+			rm.addRoi(findmaximashow.getRoi())
+			C2RoiName = wellName+"-"+posName+"-C2"
+			rm.rename(1, C2RoiName)
 	
-	# close image
+		
+		# save ROIs and data
+
+		numROIs = rm.getCount()
+		indexList = range(numROIs)
+		aROIs = array('i', indexList)
+		rm.setSelectedIndexes(aROIs)
+		selRois = rm.getSelectedIndexes()
+		print selRois, " are selected"
+	
+		roisetName = imageName[:-4] + "_ROIs.zip"
+
+		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName
+		
+		# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
+		rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
+	
+		fracDead = C2Count/C1Count 
+		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
+		print "Results: " + " ".join(map(str, resultsRow))
+		resultsWriter.writerow(resultsRow)
+
+		# close maxima image
+		findmaximashow.close()
+
+	
+	# close images
 	imp.close()
 
 
