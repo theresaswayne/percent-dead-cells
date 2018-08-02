@@ -289,9 +289,9 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		# save ROIs and data
 
 		numROIs = rm.getCount()
-		indexList = range(numROIs)
-		aROIs = array('i', indexList)
-		rm.setSelectedIndexes(aROIs)
+		#indexList = range(numROIs)
+		#aROIs = array('i', indexList)
+		#rm.setSelectedIndexes(aROIs)
 		selRois = rm.getSelectedIndexes()
 		print selRois, " are selected"
 	
@@ -300,9 +300,10 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName
 		
 		# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
-		rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
+		#rm.runCommand("save selected", os.path.join(outputDir, roisetName))   #TODO: now we get an out of bounds on the 1st image. maybe to do with multipoint?
+		rm.runCommand("save", os.path.join(outputDir, roisetName))
 	
-		fracDead = C2Count/C1Count 
+		fracDead = C2Count/C1Count
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
 		print "Results: " + " ".join(map(str, resultsRow))
 		resultsWriter.writerow(resultsRow)
