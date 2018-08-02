@@ -2,8 +2,10 @@
 #@ File (label = "Output directory", style = "directory") outputFile
 #@ String  (label = "File extension", value=".czi") ext
 #@ Double (label = "Typical nuclear long axis diameter, um", value = 15.0) nucDiam
-#@ Double (label = "Noise tolerance value for Hoechst. Higher = more stringent", value = 200) noise
-#@ Double (label = "Pixel value threshold for SYTOX Green", value = 0) thresholdGreen
+#@ Double (label = "Hoechst noise tolerance (higher = more stringent):", value = 200) noiseBlue
+#@ Double (label = "Hoechst pixel value threshold (higher = more stringent)", value = 0) thresholdBlue
+#@ Double (label = "SYTOX Green noise tolerance ", value = 100) noiseGreen
+#@ Double (label = "SYTOX Green pixel value threshold", value = 200) thresholdGreen
 
 # Note: Do not change or remove the first few lines! They provide essential parameters.
 
@@ -142,35 +144,41 @@ def parse_fileinfo(filename):
 	result = (base, well, pos) # string tuple
 	return result
 
+def findCells(imp, rm, channel, noisetol, thresh):
+	'''
+	Function for finding cells as local maxima and creating an ROI showing them
+	imp: ImagePlus
+	rm: the current ROI manager
+	channel, int: the channel being processed (used for ROI name)
+	noisetol, thresh, ints: noise tolerance and pixel value threshold for findMaxima
+
+	returns the count
+	'''
+
+	# set the channel
+	imp.setC(channel)
+
+	# find maxima
+	ip = imp.getProcessor()
+	mf = MaximumFinder()
+	maxima = mf.findMaxima(ip, noisetol, thresh, MaximumFinder.SINGLE_POINTS, False, False)
 	
+	findmaximashow = ImagePlus("Found Maxima", maxima)
+	findmaximashow.show() # an image of all the points
+	maximaip = findmaximashow.getProcessor()
+	maximahist = maximaip.getHistogram()
+	cellCount = maximahist[255]
+	
+	if cellCount != 0:
+		IJ.setRawThreshold(findmaximashow, 255, 255, "red")
+		IJ.run(findmaximashow, "Create Selection", "")
+		rm.addRoi(findmaximashow.getRoi()) # a selection consisting of all the points
 
-def run():
-	'''
-	Function for walking through the folder
-	based on IJ1 Process Folder template
-	'''
+	# close maxima image if present
+	if findmaximashow:
+		findmaximashow.close()
 
-	inputDir = inputFile.getAbsolutePath()
-	outputDir = outputFile.getAbsolutePath()
-
-	# get base filename
-	basename = get_basename(inputFile, ext) # don't have to use the abs path because I do it in the function
-
-	# create results file using basename
-	resultsPath = create_csv(basename)
-	resultsFile = open(resultsPath, 'ab') # open the csv
-	resultsWriter = csv.writer(resultsFile) # create a writer object
-
-	for root, directories, filenames in os.walk(inputDir):
-		filenames.sort()
-		for filename in filenames:
-			print "Checking:",filename
-			# Check for file extension
-			if not filename.endswith(ext):
-				continue
-			process(inputDir, outputDir, filename, resultsWriter)
-
-	resultsFile.close() # close the csv
+	return cellCount
 
 
 def process(inputDir, outputDir, fileName, resultsWriter):
@@ -202,8 +210,6 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	pixSize = imageCalib.pixelHeight # assuming in microns
 	# print "The pixel size is "+str(pixSize) # 1.29 for 10x Zeiss
 
-	rm = get_roi_manager(new=True) # reset the ROI mgr
-	
 	# pre-processing
 	bkgdRadius = int(nucDiam*pixSize*5) # radius should be considerably larger than nuclei. for d=15um, radius = 96
 	IJ.run(imp, "Subtract Background...", "rolling="+str(bkgdRadius)+" stack");
@@ -214,35 +220,14 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 	# TODO: check for low S/N or other criteria to tell if severely out of focus
 	  
 	# analysis
+	rm = get_roi_manager(new=True) # reset the ROI mgr
 
-	# channel 1 Hoechst  # TODO: adapt to use same technique as SYTOX and spin off into a function
-	imp.setC(1)
-	# more noise tolerance = fewer stray points. tried: 50, 70 (about same)
-	IJ.run(imp, "Find Maxima...", "noise="+str(noise)+" output=[Point Selection]"); # more noise tol = selects fewer stray points
+	# channel 1 Hoechst
+	C1Count = findCells(imp, rm, 1, noiseBlue, thresholdBlue)
 
-	roi = imp.getRoi()
-	
-	if roi is None: # there are no Hoechst maxima found
-		C1Count = 0
+	# check if no hoechst cells -- write results and don't save ROIs
+	if C1Count == 0:
 		print "No Hoechst cells found"
-
-	else:
-		print "I found some Hoechst cells"
-		rm.addRoi(imp.getRoi()); 
-		C1RoiName = wellName+"-"+posName+"-C1"
-		rm.rename(0, C1RoiName) # ROI indices start with 0
-		rm.select(0)
-		IJ.run(imp, "Measure", "") # one line per point
-		rt = ResultsTable.getResultsTable()
-		C1Count = rt.getCounter() # an integer    
-		C1Count = float(C1Count)
-		rm.deselect()
-		rt.reset()
-
-	print str(C1Count) + " Hoechst-labeled cells found."
-
-
-	if C1Count == 0: # no Hoechst, no cells, percent dead is undefined
 		# write 0 in Hoechst column
 		# write "" in sytox column and percent dead column -- note excel should not include these cells in average. R will not (use na.rm?)
 		C2Count = ""
@@ -250,71 +235,63 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
 		print "Results: " + " ".join(map(str, resultsRow))
 		resultsWriter.writerow(resultsRow)
+		
 
-	else:
-		# channel 2 Sytox
-		imp.setC(2)
+	else: # go ahead and measure the sytox and save ROIs
 
-		# TODO: Limit Sytox detections to DAPI-positive areas -- either by thresholding or by distance from a point
-		
-		# ---- API findMaxima WITH THRESHOLD AND SINGLE POINTS 
-		# findMaxima(ImageProcessor ip, double tolerance, double threshold, int outputType, boolean excludeOnEdges, boolean isEDM)
-		# source: https://github.com/imagej/ImageJA/blob/8e283502055d25b9f0456f4aad95afa30a649d45/src/main/java/ij/plugin/filter/MaximumFinder.java
-		# note LIST produces list of coords, SINGLE POINTS produces a bunch of points that are shown by the code below.
-		# POINT_SELECTION is supposed to give just that but can't figure out how to get it in the manager
-		# https://stackoverflow.com/questions/26526269/image-analysis-finding-proteins-in-an-image
-		# https://github.com/bgruening/galaxytools/blob/18b441b263846cece9c5527cab0de66a54ecba3a/tools/image_processing/imagej2/imagej2_find_maxima/jython_script.py
-		
-		ip = imp.getProcessor()
-		mf = MaximumFinder()
-		# tried: 60 (too many dim nuclei), 100 (better but still too many), 200 (best)
-		# with sytox we want only the brightest cells
-		maxima = mf.findMaxima(ip, 100.0, thresholdGreen, MaximumFinder.SINGLE_POINTS, False, False)
-		
-		findmaximashow = ImagePlus("Found Maxima", maxima)
-		findmaximashow.show() # an image of all the points
-		maximaip = findmaximashow.getProcessor()
-		maximahist = maximaip.getHistogram()
-		C2Count = maximahist[255]
-		print "Using the findMaxima method with a threshold of " + str(thresholdGreen) + ", I found "+ str(C2Count) + " maxima."
-		
-		if C2Count != 0:
-			IJ.setRawThreshold(findmaximashow, 255, 255, "red")
-			IJ.run(findmaximashow, "Create Selection", "")
-			rm.addRoi(findmaximashow.getRoi())
-			C2RoiName = wellName+"-"+posName+"-C2"
-			rm.rename(1, C2RoiName)
-	
+		print str(C1Count) + " Hoechst-labeled cells found."
+
+		C2Count = findCells(imp, rm, 2, noiseGreen, thresholdGreen)
+		print str(C2Count) + " SYTOX-labeled cells found."
 		
 		# save ROIs and data
 
-		numROIs = rm.getCount()
-		#indexList = range(numROIs)
-		#aROIs = array('i', indexList)
-		#rm.setSelectedIndexes(aROIs)
-		selRois = rm.getSelectedIndexes()
-		print selRois, " are selected"
-	
-		roisetName = imageName[:-4] + "_ROIs.zip"
+		# rename ROIs -- there may be 1 (Hoechst only) or 2 (Hoechst and SYTOX)
+		for i, roi in enumerate(rm.getRoisAsArray()):
+			channelName = i + 1			
+			roiName = wellName+"-"+posName+"-C"+str(channelName)
+			rm.rename(i, roiName)
 
+		numROIs = rm.getCount()
+		roisetName = imageName[:-4] + "_ROIs.zip"
 		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName
-		
-		# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
-		#rm.runCommand("save selected", os.path.join(outputDir, roisetName))   #TODO: now we get an out of bounds on the 1st image. maybe to do with multipoint?
 		rm.runCommand("save", os.path.join(outputDir, roisetName))
-	
-		fracDead = C2Count/C1Count
+			
+		fracDead = float(C2Count)/float(C1Count)
 		resultsRow = [imageName[:-4], wellName, posName, C1Count, C2Count, fracDead]
 		print "Results: " + " ".join(map(str, resultsRow))
 		resultsWriter.writerow(resultsRow)
-
-		# close maxima image
-		findmaximashow.close()
-
 	
 	# close images
 	imp.close()
 
+def run():
+	'''
+	Function for walking through the folder
+	based on IJ1 Process Folder template
+	'''
+
+	inputDir = inputFile.getAbsolutePath()
+	outputDir = outputFile.getAbsolutePath()
+
+	# get base filename
+	basename = get_basename(inputFile, ext) # don't have to use the abs path because I do it in the function
+
+	# create results file using basename
+	resultsPath = create_csv(basename)
+	resultsFile = open(resultsPath, 'ab') # open the csv
+	resultsWriter = csv.writer(resultsFile) # create a writer object
+
+	for root, directories, filenames in os.walk(inputDir):
+		filenames.sort()
+		for filename in filenames:
+			print "Checking:",filename
+			# Check for file extension
+			if not filename.endswith(ext):
+				continue
+			process(inputDir, outputDir, filename, resultsWriter)
+
+	resultsFile.close() # close the csv
 
 
 # ---- ACTUALLY PROCESS THE FOLDER
