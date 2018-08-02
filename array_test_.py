@@ -24,7 +24,7 @@ imp = IJ.openImage("http://imagej.nih.gov/ij/images/blobs.gif")
 
 #ROIs
 IJ.run(imp, "Make Binary", "")
-IJ.run(imp, "Analyze Particles...", "clear add")  # 64 particles
+IJ.run(imp, "Analyze Particles...", "size=500-1000 clear add")  # 17 particles
 rm = RoiManager.getInstance()
 if not rm:
 	rm = RoiManager()
@@ -35,43 +35,43 @@ outputDir = outputFile.getAbsolutePath()
 # try to save the rois
 
 numROIs = rm.getCount()
-indexList = range(numROIs)[:-1]
-print "my list is ",indexList
 
+# method 1 array
+
+indexList = range(numROIs)
+print "my list is ",indexList
 aROIs = array('i', indexList)
 print "my array is ",aROIs
 print "the type of my array variable is ",type(aROIs)
 
 rm.setSelectedIndexes(aROIs) # try to fix bug of not saving Hoechst ROIs
 selRois = rm.getSelectedIndexes()
-print selRois, " are selected"   # TODO: NOTE HERE!  last one is not selected
+print selRois, " are selected with an array"   # TODO: NOTE HERE!  last one is not selected
 
-roisetName = "_ROIs.zip"
+roisetName = "array_ROIs.zip"
 #print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
 print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName # TODO: it only saves the 1st ROI now!
+rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
 
 # http://forum.imagej.net/t/jython-roi-manager-deletion-by-index/5013/6
 # http://forum.imagej.net/t/select-rois-in-the-roi-manager-according-to-the-measured-data/908
 # NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
 
-rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
 
-# for i, roi in enumerate(rm.getRoisAsArray()): #TODO NOTE TRY THIS
-
-# Select only FreeLine/FreeHand ROIs
-#if roi.type == Roi.FREELINE:
-
-#	fp = roi.getInterpolatedPolygon()
-#	fp = roi.getInterpolatedPolygon(fp.getLength(False) / points_density, smooth)
-#	newRoi = PolygonRoi(fp, Roi.POLYLINE)
-#	newRois.append(newRoi)
-
-#	# Delete old ROI
-#	rm.select(i)
-#	rm.runCommand("Delete")
+# method 2 enumeration
+#for i, roi in enumerate(rm.getRoisAsArray()): # 0- based counting same as ROI indices
+	#print i
+	# rm.select(i) # selects only 1 roi
+	#indexList = 
+	#aROIs = array('i',
+	#rm.setSelectedIndexes(selected)
 	
-#numROIs = 5
-#indexList = range(numROIs)[:-1]
-aROIs = array('i', indexList)
+#selRois = rm.getSelectedIndexes()
+#print selRois, " are selected with enumeration"
+
+#roisetName = "enum_ROIs.zip"
+#print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
+#print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName 
+#rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
 
 

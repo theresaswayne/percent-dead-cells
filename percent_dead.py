@@ -289,19 +289,16 @@ def process(inputDir, outputDir, fileName, resultsWriter):
 		# save ROIs and data
 
 		numROIs = rm.getCount()
-		indexList = range(numROIs)[:-1]
-		print indexList
+		indexList = range(numROIs)
 		aROIs = array('i', indexList)
-		rm.setSelectedIndexes(aROIs) # try to fix bug of not saving Hoechst ROIs
+		rm.setSelectedIndexes(aROIs)
 		selRois = rm.getSelectedIndexes()
-		print selRois, " are selected" # TODO: this is funky, the array isn't treated right
+		print selRois, " are selected"
 	
 		roisetName = imageName[:-4] + "_ROIs.zip"
-		# print "Saving " + str(len(roi_list)) + " ROIs to " + outputDir + str(os.sep) + roisetName
 
-		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName # TODO: it only saves the 1st ROI now!
-		# http://forum.imagej.net/t/jython-roi-manager-deletion-by-index/5013/6
-		# http://forum.imagej.net/t/select-rois-in-the-roi-manager-according-to-the-measured-data/908
+		print "Saving " + str(numROIs) + " ROIs to " + outputDir + str(os.sep) + roisetName
+		
 		# NOTE "save selected" is necessary. "Save" gives an array index out of bounds on last image in a set.
 		rm.runCommand("save selected", os.path.join(outputDir, roisetName))  
 	
